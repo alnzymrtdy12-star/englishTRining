@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>VocabStory — Learn English</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Main App -->
+  <div id="app">
+
+    <!-- ===== SIDEBAR (desktop) ===== -->
+    <aside id="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon">🦉</span>
+        <span class="logo-text">VocabStory</span>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-page="today">
+          <span class="nav-icon">📖</span>
+          <span class="nav-label">Today</span>
+        </button>
+        <button class="nav-item" data-page="dictionary">
+          <span class="nav-icon">📚</span>
+          <span class="nav-label">Dictionary</span>
+        </button>
+        <button class="nav-item" data-page="archive">
+          <span class="nav-icon">🗂</span>
+          <span class="nav-label">Archive</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main id="main-content">
+
+      <!-- ===== PAGE: TODAY ===== -->
+      <div id="page-today" class="page active">
+        <div class="page-scroll">
+
+          <!-- Streak Bar -->
+          <div id="streak-bar">
+            <span class="streak-fire">🔥</span>
+            <div class="streak-info">
+              <span id="streak-count">0</span>
+              <span class="streak-label">day streak</span>
+            </div>
+          </div>
+
+          <!-- Welcome / How-it-works Guide -->
+          <div id="welcome-card" class="welcome-card hidden">
+            <button id="welcome-close" class="welcome-close" aria-label="إغلاق">×</button>
+            <div class="welcome-header">
+              <span class="welcome-emoji">👋</span>
+              <h3 class="welcome-title">أهلاً بك في VocabStory</h3>
+            </div>
+            <p class="welcome-sub">تعلّم الإنجليزية من خلال قصص مخصصة لكلماتك. ٣ خطوات فقط:</p>
+            <ol class="welcome-steps">
+              <li>
+                <span class="step-num">1</span>
+                <div class="step-body">
+                  <strong>أضف كلمة</strong>
+                  <span>اكتب الكلمة الإنجليزية ومعناها بالعربية (المعنى اختياري) ثم اضغط <em>+ Add Word</em>.</span>
+                </div>
+              </li>
+              <li>
+                <span class="step-num">2</span>
+                <div class="step-body">
+                  <strong>اضغط Generate Story</strong>
+                  <span>سننشئ قصة قصيرة تستخدم كل كلماتك بشكل طبيعي، مع سؤال للتفكير في النهاية.</span>
+                </div>
+              </li>
+              <li>
+                <span class="step-num">3</span>
+                <div class="step-body">
+                  <strong>راجع كلماتك</strong>
+                  <span>كل كلمة تُحفظ تلقائياً في <em>Dictionary</em>، وكل قصة تُحفظ في <em>Archive</em>.</span>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Word Input Section -->
+          <div class="section-card">
+            <h3 class="section-title">Today's Words</h3>
+            <div class="input-row">
+              <input
+                type="text"
+                id="word-en"
+                placeholder="English word"
+                autocomplete="off"
+              />
+              <input
+                type="text"
+                id="word-ar"
+                placeholder="معنى (اختياري)"
+                autocomplete="off"
+                dir="auto"
+              />
+            </div>
+            <button id="add-word-btn" class="btn-secondary">+ Add Word</button>
+
+            <!-- Word Chips -->
+            <div id="word-chips" class="chips-container"></div>
+          </div>
+
+          <!-- Generate Button -->
+          <button id="generate-story-btn" class="btn-generate" disabled>
+            ✨ Generate Story
+          </button>
+
+          <!-- Story Card -->
+          <div id="story-card" class="section-card hidden">
+            <div class="card-header">
+              <h3 class="section-title">Your Story</h3>
+              <button id="translate-btn" class="btn-translate">🌐 Arabic</button>
+            </div>
+            <div id="story-text" class="story-body"></div>
+          </div>
+
+          <!-- Comprehension Card -->
+          <div id="comprehension-card" class="section-card hidden">
+            <h3 class="section-title">Think About It 💭</h3>
+            <p id="comp-question" class="comp-question"></p>
+            <textarea
+              id="comp-answer"
+              placeholder="Write your thoughts here..."
+              rows="3"
+            ></textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ===== PAGE: DICTIONARY ===== -->
+      <div id="page-dictionary" class="page hidden">
+        <div class="page-scroll">
+          <div class="page-header">
+            <h2>My Dictionary</h2>
+          </div>
+          <div class="search-wrapper">
+            <span class="search-icon">🔍</span>
+            <input
+              type="text"
+              id="dict-search"
+              placeholder="Search words..."
+              autocomplete="off"
+            />
+          </div>
+          <div id="dict-list" class="words-list"></div>
+          <div id="dict-empty" class="empty-state hidden">
+            <div class="empty-icon">📚</div>
+            <p>No words yet. Add some on the Today tab!</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PAGE: ARCHIVE ===== -->
+      <div id="page-archive" class="page hidden">
+        <div class="page-scroll">
+          <div class="page-header">
+            <h2>Story Archive</h2>
+          </div>
+          <div id="archive-list" class="archive-list"></div>
+          <div id="archive-empty" class="empty-state hidden">
+            <div class="empty-icon">🗂</div>
+            <p>No stories yet. Generate your first one!</p>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div><!-- end #app -->
+
+  <!-- Bottom Navigation (mobile) -->
+  <nav id="bottom-nav">
+    <button class="nav-item active" data-page="today">
+      <span class="nav-icon">📖</span>
+      <span class="nav-label">Today</span>
+    </button>
+    <button class="nav-item" data-page="dictionary">
+      <span class="nav-icon">📚</span>
+      <span class="nav-label">Dictionary</span>
+    </button>
+    <button class="nav-item" data-page="archive">
+      <span class="nav-icon">🗂</span>
+      <span class="nav-label">Archive</span>
+    </button>
+  </nav>
+
+  <!-- Error Toast -->
+  <div id="error-toast" class="toast hidden"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
+</html>
