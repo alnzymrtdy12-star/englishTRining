@@ -33,6 +33,10 @@
           <span class="nav-icon">🗂</span>
           <span class="nav-label">Archive</span>
         </button>
+        <button class="nav-item" data-page="thinkfast">
+          <span class="nav-icon">⚡</span>
+          <span class="nav-label">Think Fast</span>
+        </button>
       </nav>
     </aside>
 
@@ -143,6 +147,10 @@
           <div class="page-header">
             <h2>My Dictionary</h2>
           </div>
+          <label class="toggle-row" dir="rtl">
+            <input type="checkbox" id="toggle-examples" checked />
+            <span>إظهار الجمل الداعمة</span>
+          </label>
           <div class="search-wrapper">
             <span class="search-icon">🔍</span>
             <input
@@ -174,6 +182,66 @@
         </div>
       </div>
 
+      <!-- ===== PAGE: THINK FAST ===== -->
+      <div id="page-thinkfast" class="page">
+        <div class="page-scroll">
+          <div class="page-header">
+            <h2>Think Fast ⚡</h2>
+            <p class="page-subtitle">English-only · 15s per question · don't translate</p>
+          </div>
+
+          <div id="tf-empty" class="empty-state hidden">
+            <div class="empty-icon">⚡</div>
+            <p dir="rtl">أضف 4 كلمات على الأقل للبدء</p>
+          </div>
+
+          <div id="tf-start" class="section-card">
+            <h3 class="section-title">Choose session length</h3>
+            <div class="tf-length-row">
+              <button class="btn-secondary tf-length-btn" data-total="5">5</button>
+              <button class="btn-secondary tf-length-btn" data-total="10">10</button>
+              <button class="btn-secondary tf-length-btn" data-total="15">15</button>
+            </div>
+            <p class="tf-hint">Pick the English word that matches the English definition.</p>
+          </div>
+
+          <div id="tf-game" class="section-card hidden">
+            <div class="tf-progress">
+              <span>Q <span id="tf-idx">1</span>/<span id="tf-total">10</span></span>
+              <span>Score: <span id="tf-score">0</span></span>
+            </div>
+            <div class="timer-bar"><div class="timer-bar-fill"></div></div>
+            <div class="tf-clue" id="tf-clue"></div>
+            <div class="tf-options" id="tf-options"></div>
+            <div id="tf-reveal" class="tf-reveal hidden">
+              <div class="tf-reveal-ar"></div>
+              <div class="tf-reveal-example"></div>
+            </div>
+          </div>
+
+          <div id="tf-summary" class="section-card hidden">
+            <h3 class="section-title">Done</h3>
+            <div class="tf-final-score"><span id="tf-final"></span></div>
+            <div class="tf-stats-row">
+              <div class="tf-stat">
+                <span class="tf-stat-label">Avg time</span>
+                <span id="tf-avg-time" class="tf-stat-value">—</span>
+              </div>
+              <div class="tf-stat">
+                <span class="tf-stat-label">Missed</span>
+                <span id="tf-missed-count" class="tf-stat-value">0</span>
+              </div>
+            </div>
+            <h4 class="tf-subhead">Words to review</h4>
+            <div id="tf-wrong-list"></div>
+            <div class="tf-summary-actions">
+              <button id="tf-retry" class="btn-secondary">Try again</button>
+              <button id="tf-practice-missed" class="btn-generate">Practice missed only</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </main>
 
   </div><!-- end #app -->
@@ -191,6 +259,10 @@
     <button class="nav-item" data-page="archive">
       <span class="nav-icon">🗂</span>
       <span class="nav-label">Archive</span>
+    </button>
+    <button class="nav-item" data-page="thinkfast">
+      <span class="nav-icon">⚡</span>
+      <span class="nav-label">Think Fast</span>
     </button>
   </nav>
 

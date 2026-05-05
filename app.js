@@ -16,16 +16,36 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const isWelcomeDismissed = () => localStorage.getItem('vs_welcome_dismissed') === 'true';
 const setWelcomeDismissed = () => localStorage.setItem('vs_welcome_dismissed', 'true');
 
+// ─── Examples toggle (localStorage, default ON) ──
+const isExamplesEnabled = () => localStorage.getItem('vs_examples_enabled') !== 'false';
+const setExamplesEnabled = v => localStorage.setItem('vs_examples_enabled', v ? 'true' : 'false');
+
 // ─── State ───────────────────────────────────
 let state = {
   today:      [],   // [{en, ar, date}]
-  dictionary: [],   // [{en, ar, date}]
+  dictionary: [],   // [{en, ar, example, definition, date, correct, wrong, lastSeen, avgMs}]
   storyWords: [],
   story:      '',
   storyAr:    '',
   showingAr:  false,
   question:   '',
   generating: false,
+  quiz: {
+    active: false,
+    total: 10,
+    queue: [],
+    idx: 0,
+    score: 0,
+    wrong: [],
+    rafId: null,
+    deadline: 0,
+    questionStart: 0,
+    responseTimes: [],
+    currentQ: null,
+    frozenRemaining: null,
+    hiddenAt: 0,
+    locked: false,
+  },
 };
 
 // ─── DOM refs ────────────────────────────────
@@ -52,6 +72,24 @@ const ui = {
   welcomeCard:  $('welcome-card'),
   welcomeClose: $('welcome-close'),
   toast:        $('error-toast'),
+  toggleExamples: $('toggle-examples'),
+  tfEmpty:      $('tf-empty'),
+  tfStart:      $('tf-start'),
+  tfGame:       $('tf-game'),
+  tfSummary:    $('tf-summary'),
+  tfIdx:        $('tf-idx'),
+  tfTotal:      $('tf-total'),
+  tfScore:      $('tf-score'),
+  tfClue:       $('tf-clue'),
+  tfOptions:    $('tf-options'),
+  tfReveal:     $('tf-reveal'),
+  tfTimerFill:  null,
+  tfFinal:      $('tf-final'),
+  tfAvgTime:    $('tf-avg-time'),
+  tfMissedCount: $('tf-missed-count'),
+  tfWrongList:  $('tf-wrong-list'),
+  tfRetry:      $('tf-retry'),
+  tfPracticeMissed: $('tf-practice-missed'),
 };
 
 // ─── Toast ───────────────────────────────────
@@ -117,8 +155,18 @@ async function loadWords() {
   if (dictRes.error)  console.error('[loadWords dict]',  dictRes.error);
   if (todayRes.error) console.error('[loadWords today]', todayRes.error);
 
-  state.dictionary = (dictRes.data  || []).map(r => ({ en: r.word_en, ar: r.word_ar || '', date: r.added_at }));
-  state.today      = (todayRes.data || []).map(r => ({ en: r.word_en, ar: r.word_ar || '', date: r.added_at }));
+  state.dictionary = (dictRes.data || []).map(r => ({
+    en:         r.word_en,
+    ar:         r.word_ar || '',
+    example:    r.example_en || '',
+    definition: r.definition_en || '',
+    date:       r.added_at,
+    correct:    r.quiz_correct || 0,
+    wrong:      r.quiz_wrong || 0,
+    lastSeen:   r.quiz_last_seen || null,
+    avgMs:      r.quiz_avg_ms || 0,
+  }));
+  state.today = (todayRes.data || []).map(r => ({ en: r.word_en, ar: r.word_ar || '', date: r.added_at }));
 
   renderChips();
   renderDictionary();
@@ -164,7 +212,13 @@ async function addWord() {
   if (!dictHit) {
     const { error: dictErr } = await sb.from('dictionary').insert({ word_en: en, word_ar: ar });
     if (!dictErr) {
-      state.dictionary.push({ en, ar, date: new Date().toISOString() });
+      state.dictionary.push({
+        en, ar,
+        example: '', definition: '',
+        date: new Date().toISOString(),
+        correct: 0, wrong: 0, lastSeen: null, avgMs: 0,
+      });
+      if (isExamplesEnabled()) fetchWordInfoFor(en);
     } else if (dictErr.code !== '23505') {
       console.error('[addWord dict]', dictErr);
     }
@@ -342,6 +396,23 @@ function formatStoryHtml(story) {
 }
 
 // ─── Dictionary ──────────────────────────────
+async function fetchWordInfoFor(en) {
+  try {
+    const { example, definition } = await apiPost('/api/word-info', { word: en });
+    await sb.from('dictionary')
+      .update({ example_en: example, definition_en: definition })
+      .ilike('word_en', en);
+    const e = state.dictionary.find(w => w.en.toLowerCase() === en.toLowerCase());
+    if (e) { e.example = example; e.definition = definition; }
+    const dictPage = document.getElementById('page-dictionary');
+    if (dictPage && dictPage.classList.contains('active')) {
+      renderDictionary(ui.dictSearch.value.toLowerCase().trim());
+    }
+  } catch (err) {
+    console.warn('[word-info]', en, err.message || err);
+  }
+}
+
 function renderDictionary(filter = '') {
   const list = filter
     ? state.dictionary.filter(w =>
@@ -356,6 +427,8 @@ function renderDictionary(filter = '') {
     return;
   }
 
+  const showExamples = isExamplesEnabled();
+
   ui.dictEmpty.classList.add('hidden');
   ui.dictList.innerHTML = [...list].reverse().map(w => `
     <div class="word-item">
@@ -363,6 +436,7 @@ function renderDictionary(filter = '') {
       <div class="word-meta">
         <div class="word-en">${escHtml(w.en)}</div>
         ${w.ar ? `<div class="word-ar">${escHtml(w.ar)}</div>` : ''}
+        ${(showExamples && w.example) ? `<div class="word-example">${escHtml(w.example)}</div>` : ''}
         <div class="word-date">${new Date(w.date || Date.now()).toLocaleDateString()}</div>
       </div>
     </div>
@@ -397,7 +471,295 @@ function switchPage(name) {
 
   if (name === 'dictionary') renderDictionary(ui.dictSearch.value.toLowerCase());
   if (name === 'archive')    renderArchive();
+  if (name === 'thinkfast')  tfReset();
 }
+
+// ─── Think Fast (timed MCQ quiz) ─────────────
+function tfShuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function tfStaleBoost(lastSeen) {
+  if (!lastSeen) return 0;
+  const days = (Date.now() - new Date(lastSeen).getTime()) / 86400000;
+  return days > 3 ? 1 : 0;
+}
+
+function tfBuildQueue(total, pool) {
+  // Score each entry — Quizlet-style prioritization
+  const scored = pool.map(w => {
+    const totalAttempts = (w.correct || 0) + (w.wrong || 0);
+    const recentCorrect = totalAttempts > 0 && (w.correct || 0) > (w.wrong || 0) ? 1 : 0;
+    const score =
+      3 * (w.wrong || 0)                              // missed-before words first
+      + (totalAttempts === 0 ? 2 : 0)                 // never-quizzed next
+      + tfStaleBoost(w.lastSeen)                      // stale words boosted
+      - 0.5 * recentCorrect                           // recent-correct pushed down
+      + Math.random() * 0.4;                          // jitter
+    return { w, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, total).map(s => s.w);
+}
+
+function tfPickDistractors(correctEntry) {
+  const targetLen = correctEntry.en.length;
+  const correctLow = correctEntry.en.toLowerCase();
+  const all = state.dictionary.filter(w => w.en.toLowerCase() !== correctLow);
+  const close = all.filter(w => Math.abs(w.en.length - targetLen) <= 3);
+  const pool = close.length >= 3 ? close : all;
+  // dedup by lowercase
+  const seen = new Set();
+  const unique = [];
+  for (const w of tfShuffle(pool)) {
+    const k = w.en.toLowerCase();
+    if (!seen.has(k)) { seen.add(k); unique.push(w); }
+    if (unique.length >= 3) break;
+  }
+  return unique;
+}
+
+function tfStart(total, queueOverride) {
+  if (state.dictionary.length < 4) {
+    if (ui.tfEmpty)  ui.tfEmpty.classList.remove('hidden');
+    if (ui.tfStart)  ui.tfStart.classList.add('hidden');
+    if (ui.tfGame)   ui.tfGame.classList.add('hidden');
+    if (ui.tfSummary) ui.tfSummary.classList.add('hidden');
+    return;
+  }
+
+  let queue;
+  if (Array.isArray(queueOverride) && queueOverride.length) {
+    queue = queueOverride.slice();
+  } else {
+    const eligible = state.dictionary.filter(w => w.definition);
+    if (eligible.length < 4) {
+      showToast('Generating definitions, try again in a moment…', 4000);
+      // background-fill missing
+      state.dictionary
+        .filter(w => !w.definition)
+        .slice(0, 8)
+        .forEach(w => fetchWordInfoFor(w.en));
+      return;
+    }
+    queue = tfBuildQueue(total, eligible);
+  }
+
+  state.quiz.active = true;
+  state.quiz.total = queue.length;
+  state.quiz.queue = queue;
+  state.quiz.idx = 0;
+  state.quiz.score = 0;
+  state.quiz.wrong = [];
+  state.quiz.responseTimes = [];
+  state.quiz.frozenRemaining = null;
+  state.quiz.locked = false;
+
+  ui.tfEmpty.classList.add('hidden');
+  ui.tfStart.classList.add('hidden');
+  ui.tfSummary.classList.add('hidden');
+  ui.tfGame.classList.remove('hidden');
+  if (!ui.tfTimerFill) ui.tfTimerFill = ui.tfGame.querySelector('.timer-bar-fill');
+  ui.tfTotal.textContent = String(state.quiz.total);
+  ui.tfScore.textContent = '0';
+
+  tfNext();
+}
+
+function tfNext() {
+  const correct = state.quiz.queue[state.quiz.idx];
+  const distractors = tfPickDistractors(correct);
+  const options = tfShuffle([correct, ...distractors]);
+  state.quiz.currentQ = { correct, options };
+  state.quiz.locked = false;
+
+  ui.tfIdx.textContent = String(state.quiz.idx + 1);
+  ui.tfClue.textContent = correct.definition || '(missing definition)';
+  ui.tfClue.classList.remove('tf-clue-anim');
+  // restart slideUp animation
+  void ui.tfClue.offsetWidth;
+  ui.tfClue.classList.add('tf-clue-anim');
+
+  ui.tfOptions.innerHTML = options.map((opt, i) =>
+    `<button class="tf-option" data-choice="${i}">${escHtml(opt.en)}</button>`
+  ).join('');
+
+  ui.tfReveal.classList.add('hidden');
+  ui.tfReveal.querySelector('.tf-reveal-ar').textContent = '';
+  ui.tfReveal.querySelector('.tf-reveal-example').textContent = '';
+
+  if (ui.tfTimerFill) {
+    ui.tfTimerFill.classList.remove('warn', 'danger');
+    ui.tfTimerFill.style.setProperty('--remaining', '1');
+  }
+
+  state.quiz.questionStart = Date.now();
+  tfStartTimer();
+}
+
+function tfStartTimer() {
+  state.quiz.deadline = Date.now() + 15000;
+  cancelAnimationFrame(state.quiz.rafId);
+  state.quiz.rafId = requestAnimationFrame(tfTick);
+}
+
+function tfTick() {
+  if (!state.quiz.active) return;
+  if (state.quiz.frozenRemaining != null) return; // paused
+  const remaining = Math.max(0, state.quiz.deadline - Date.now());
+  const ratio = remaining / 15000;
+  if (ui.tfTimerFill) {
+    ui.tfTimerFill.style.setProperty('--remaining', String(ratio));
+    ui.tfTimerFill.classList.toggle('warn', ratio <= 0.33 && ratio > 0.15);
+    ui.tfTimerFill.classList.toggle('danger', ratio <= 0.15);
+  }
+  if (remaining <= 0) {
+    tfAnswer(null);
+    return;
+  }
+  state.quiz.rafId = requestAnimationFrame(tfTick);
+}
+
+function tfAnswer(choiceIdx) {
+  if (state.quiz.locked || !state.quiz.active) return;
+  state.quiz.locked = true;
+  cancelAnimationFrame(state.quiz.rafId);
+  state.quiz.rafId = null;
+
+  const { correct, options } = state.quiz.currentQ;
+  const responseMs = Date.now() - state.quiz.questionStart;
+  state.quiz.responseTimes.push(responseMs);
+
+  const isCorrect = choiceIdx !== null && options[choiceIdx].en.toLowerCase() === correct.en.toLowerCase();
+  if (isCorrect) state.quiz.score++;
+
+  // Mark buttons
+  const btns = ui.tfOptions.querySelectorAll('.tf-option');
+  btns.forEach((btn, i) => {
+    btn.disabled = true;
+    if (options[i].en.toLowerCase() === correct.en.toLowerCase()) btn.classList.add('correct');
+    else if (i === choiceIdx) btn.classList.add('wrong');
+  });
+  ui.tfScore.textContent = String(state.quiz.score);
+
+  // Reveal block (Arabic + example) — only AFTER lock
+  ui.tfReveal.querySelector('.tf-reveal-ar').textContent = correct.ar || '';
+  ui.tfReveal.querySelector('.tf-reveal-example').textContent = correct.example || '';
+  ui.tfReveal.classList.remove('hidden');
+
+  // Persist stats to Supabase + state (fire-and-forget)
+  const newCorrect = (correct.correct || 0) + (isCorrect ? 1 : 0);
+  const newWrong   = (correct.wrong   || 0) + (isCorrect ? 0 : 1);
+  const totalSeen  = newCorrect + newWrong;
+  const oldAvg     = correct.avgMs || 0;
+  const newAvg     = oldAvg
+    ? Math.round((oldAvg * (totalSeen - 1) + responseMs) / totalSeen)
+    : responseMs;
+  sb.from('dictionary').update({
+    quiz_correct:   newCorrect,
+    quiz_wrong:     newWrong,
+    quiz_avg_ms:    newAvg,
+    quiz_last_seen: new Date().toISOString(),
+  }).ilike('word_en', correct.en).then(({ error }) => {
+    if (error) console.warn('[tfAnswer persist]', error);
+  });
+  correct.correct = newCorrect;
+  correct.wrong = newWrong;
+  correct.avgMs = newAvg;
+  correct.lastSeen = new Date().toISOString();
+
+  if (!isCorrect) {
+    state.quiz.wrong.push({
+      ...correct,
+      userPick: choiceIdx === null ? null : options[choiceIdx].en,
+    });
+  }
+
+  setTimeout(() => {
+    if (!state.quiz.active) return;
+    state.quiz.idx++;
+    if (state.quiz.idx < state.quiz.queue.length) tfNext();
+    else tfEnd();
+  }, 1600);
+}
+
+function tfEnd() {
+  state.quiz.active = false;
+  cancelAnimationFrame(state.quiz.rafId);
+  state.quiz.rafId = null;
+  ui.tfGame.classList.add('hidden');
+  ui.tfSummary.classList.remove('hidden');
+
+  const total = state.quiz.total;
+  const score = state.quiz.score;
+  ui.tfFinal.textContent = `${score} / ${total}`;
+
+  const times = state.quiz.responseTimes;
+  const avg = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+  ui.tfAvgTime.textContent = avg ? `${(avg / 1000).toFixed(1)}s` : '—';
+  ui.tfAvgTime.classList.remove('fast', 'medium', 'slow');
+  if (avg > 0 && avg < 5000) ui.tfAvgTime.classList.add('fast');
+  else if (avg < 10000) ui.tfAvgTime.classList.add('medium');
+  else ui.tfAvgTime.classList.add('slow');
+
+  ui.tfMissedCount.textContent = String(state.quiz.wrong.length);
+
+  if (state.quiz.wrong.length === 0) {
+    ui.tfWrongList.innerHTML = '<div class="tf-perfect">Perfect — no words to review!</div>';
+  } else {
+    ui.tfWrongList.innerHTML = state.quiz.wrong.map(w => `
+      <div class="tf-wrong-item">
+        <div class="tf-wrong-en">${escHtml(w.en)}</div>
+        ${w.ar ? `<div class="tf-wrong-ar">${escHtml(w.ar)}</div>` : ''}
+        ${w.example ? `<div class="tf-wrong-example">${escHtml(w.example)}</div>` : ''}
+        ${w.userPick ? `<div class="tf-wrong-pick">you picked: ${escHtml(w.userPick)}</div>` : `<div class="tf-wrong-pick">⏱ time out</div>`}
+      </div>
+    `).join('');
+  }
+
+  if (ui.tfPracticeMissed) {
+    ui.tfPracticeMissed.disabled = state.quiz.wrong.length === 0;
+  }
+}
+
+function tfReset() {
+  state.quiz.active = false;
+  state.quiz.locked = false;
+  state.quiz.frozenRemaining = null;
+  cancelAnimationFrame(state.quiz.rafId);
+  state.quiz.rafId = null;
+  if (ui.tfGame)    ui.tfGame.classList.add('hidden');
+  if (ui.tfSummary) ui.tfSummary.classList.add('hidden');
+  if (ui.tfEmpty) {
+    if (state.dictionary.length < 4) ui.tfEmpty.classList.remove('hidden');
+    else ui.tfEmpty.classList.add('hidden');
+  }
+  if (ui.tfStart) {
+    if (state.dictionary.length >= 4) ui.tfStart.classList.remove('hidden');
+    else ui.tfStart.classList.add('hidden');
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!state.quiz.active) return;
+  if (document.hidden) {
+    state.quiz.frozenRemaining = state.quiz.deadline - Date.now();
+    state.quiz.hiddenAt = Date.now();
+    cancelAnimationFrame(state.quiz.rafId);
+    state.quiz.rafId = null;
+  } else if (state.quiz.frozenRemaining != null) {
+    const hiddenDuration = Date.now() - state.quiz.hiddenAt;
+    state.quiz.deadline = Date.now() + Math.max(0, state.quiz.frozenRemaining);
+    state.quiz.questionStart += hiddenDuration; // exclude hidden time from response time
+    state.quiz.frozenRemaining = null;
+    if (!state.quiz.locked) state.quiz.rafId = requestAnimationFrame(tfTick);
+  }
+});
 
 // ─── Utility ─────────────────────────────────
 function escHtml(str) {
@@ -447,6 +809,48 @@ function bindEvents() {
       if (item) item.click();
     }
   });
+
+  // Examples toggle
+  if (ui.toggleExamples) {
+    ui.toggleExamples.checked = isExamplesEnabled();
+    ui.toggleExamples.addEventListener('change', e => {
+      setExamplesEnabled(e.target.checked);
+      renderDictionary(ui.dictSearch.value.toLowerCase().trim());
+    });
+  }
+
+  // Think Fast — start length buttons
+  if (ui.tfStart) {
+    ui.tfStart.addEventListener('click', e => {
+      const btn = e.target.closest('.tf-length-btn');
+      if (!btn) return;
+      const total = Number(btn.dataset.total) || 10;
+      tfStart(total);
+    });
+  }
+
+  // Think Fast — option clicks
+  if (ui.tfOptions) {
+    ui.tfOptions.addEventListener('click', e => {
+      const btn = e.target.closest('.tf-option');
+      if (!btn || btn.disabled) return;
+      tfAnswer(Number(btn.dataset.choice));
+    });
+  }
+
+  // Think Fast — summary actions
+  if (ui.tfRetry) {
+    ui.tfRetry.addEventListener('click', () => tfStart(state.quiz.total || 10));
+  }
+  if (ui.tfPracticeMissed) {
+    ui.tfPracticeMissed.addEventListener('click', () => {
+      const wrongPool = state.quiz.wrong.slice();
+      if (!wrongPool.length) return;
+      // Strip userPick before re-quizzing
+      const queue = wrongPool.map(w => state.dictionary.find(d => d.en.toLowerCase() === w.en.toLowerCase()) || w);
+      tfStart(queue.length, queue);
+    });
+  }
 }
 
 // ─── Init ────────────────────────────────────
@@ -454,6 +858,7 @@ async function init() {
   bindEvents();
   await Promise.all([loadWords(), loadStreak()]);
   updateWelcomeVisibility();
+  if (ui.toggleExamples) ui.toggleExamples.checked = isExamplesEnabled();
 }
 
 document.addEventListener('DOMContentLoaded', init);
