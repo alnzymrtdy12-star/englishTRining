@@ -910,6 +910,11 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.7; }
   margin-top: 6px;
   line-height: 1.5;
 }
+.word-example-loading {
+  opacity: 0.6;
+  font-style: normal;
+  font-size: 12px;
+}
 .toggle-row {
   display: flex;
   align-items: center;

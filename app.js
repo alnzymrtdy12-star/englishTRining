@@ -430,17 +430,38 @@ function renderDictionary(filter = '') {
   const showExamples = isExamplesEnabled();
 
   ui.dictEmpty.classList.add('hidden');
-  ui.dictList.innerHTML = [...list].reverse().map(w => `
+  ui.dictList.innerHTML = [...list].reverse().map(w => {
+    const showLoading = showExamples && !w.example;
+    return `
     <div class="word-item">
       <div class="word-badge">${escHtml(w.en.slice(0, 2).toUpperCase())}</div>
       <div class="word-meta">
         <div class="word-en">${escHtml(w.en)}</div>
         ${w.ar ? `<div class="word-ar">${escHtml(w.ar)}</div>` : ''}
-        ${(showExamples && w.example) ? `<div class="word-example">${escHtml(w.example)}</div>` : ''}
-        <div class="word-date">${new Date(w.date || Date.now()).toLocaleDateString()}</div>
+        ${showExamples && w.example ? `<div class="word-example">${escHtml(w.example)}</div>` : ''}
+        ${showLoading ? `<div class="word-example word-example-loading">⏳ جاري توليد الجملة…</div>` : ''}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+}
+
+// Backfill missing example sentences in small throttled batches
+let backfillRunning = false;
+async function backfillExamples() {
+  if (backfillRunning) return;
+  if (!isExamplesEnabled()) return;
+  const missing = state.dictionary.filter(w => !w.example);
+  if (!missing.length) return;
+  backfillRunning = true;
+  try {
+    const batch = missing.slice(0, 8);
+    for (const w of batch) {
+      await fetchWordInfoFor(w.en);
+      await new Promise(r => setTimeout(r, 250));
+    }
+  } finally {
+    backfillRunning = false;
+  }
 }
 
 // ─── Welcome guide ───────────────────────────
@@ -469,7 +490,7 @@ function switchPage(name) {
     n.classList.toggle('active', n.dataset.page === name)
   );
 
-  if (name === 'dictionary') renderDictionary(ui.dictSearch.value.toLowerCase());
+  if (name === 'dictionary') { renderDictionary(ui.dictSearch.value.toLowerCase()); backfillExamples(); }
   if (name === 'archive')    renderArchive();
   if (name === 'thinkfast')  tfReset();
 }
@@ -859,6 +880,8 @@ async function init() {
   await Promise.all([loadWords(), loadStreak()]);
   updateWelcomeVisibility();
   if (ui.toggleExamples) ui.toggleExamples.checked = isExamplesEnabled();
+  // Backfill missing example sentences for legacy words (throttled)
+  backfillExamples();
 }
 
 document.addEventListener('DOMContentLoaded', init);
