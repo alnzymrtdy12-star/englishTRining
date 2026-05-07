@@ -552,7 +552,9 @@ let backfillRunning = false;
 async function backfillExamples() {
   if (backfillRunning) return;
   if (!isExamplesEnabled()) return;
-  const missing = state.dictionary.filter(w => !w.example);
+  const missing = state.dictionary.filter(
+    w => !w.example && !wordInfoFailures.has(w.en.toLowerCase())
+  );
   if (!missing.length) return;
   backfillRunning = true;
   let shownErrorToast = false;
@@ -563,7 +565,6 @@ async function backfillExamples() {
       if (wordInfoFailures.has(w.en.toLowerCase()) && !shownErrorToast) {
         showToast('Error', 5000);
         shownErrorToast = true;
-        break;
       }
       await new Promise(r => setTimeout(r, 250));
     }
@@ -613,32 +614,39 @@ async function generateSentences() {
     );
 
     if (!existing) {
-      sb.from('sentences_words')
+      const tempEntry = {
+        id:        `temp-${Date.now()}`,
+        wordEn:    en,
+        wordAr:    ar,
+        sentences: result.sentences,
+        date:      new Date().toISOString(),
+      };
+      state.sentenceWords.unshift(tempEntry);
+      const dictPage = document.getElementById('page-dictionary');
+      if (dictPage && dictPage.classList.contains('active') && state.dictTab === 'sentences') {
+        renderSentDictTab(ui.dictSearch.value.toLowerCase().trim());
+      }
+
+      const { data, error } = await sb.from('sentences_words')
         .insert({
           word_en:   en,
           word_ar:   ar || null,
           sentences: result.sentences,
         })
-        .select()
-        .then(({ data, error }) => {
-          if (error) {
-            console.error('[generateSentences persist]', error);
-            return;
-          }
-          if (data && data[0]) {
-            state.sentenceWords.unshift({
-              id:        data[0].id,
-              wordEn:    en,
-              wordAr:    ar,
-              sentences: result.sentences,
-              date:      data[0].added_at,
-            });
-            const dictPage = document.getElementById('page-dictionary');
-            if (dictPage && dictPage.classList.contains('active') && state.dictTab === 'sentences') {
-              renderSentDictTab(ui.dictSearch.value.toLowerCase().trim());
-            }
-          }
-        });
+        .select();
+
+      if (error) {
+        console.error('[generateSentences persist]', error);
+        const i = state.sentenceWords.findIndex(w => w.id === tempEntry.id);
+        if (i !== -1) state.sentenceWords.splice(i, 1);
+        if (dictPage && dictPage.classList.contains('active') && state.dictTab === 'sentences') {
+          renderSentDictTab(ui.dictSearch.value.toLowerCase().trim());
+        }
+        showToast('Error', 5000);
+      } else if (data && data[0]) {
+        tempEntry.id   = data[0].id;
+        tempEntry.date = data[0].added_at;
+      }
     }
 
     ui.sentWordEn.value = '';
