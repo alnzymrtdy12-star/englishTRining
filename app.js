@@ -116,13 +116,8 @@ function showToast(msg, duration = 6000) {
 }
 
 function showStoryError(err) {
-  const msg = (err && err.message) || String(err);
-  ui.storyText.innerHTML =
-    `<div class="error-box">
-       <strong>⚠️ Failed to generate story</strong>
-       <div class="error-detail">${escHtml(msg)}</div>
-       <div class="error-hint">Open DevTools → Console for full details.</div>
-     </div>`;
+  void err;
+  ui.storyText.innerHTML = `<div class="error-box"><strong>Error</strong></div>`;
   ui.storyCard.classList.remove('hidden');
 }
 
@@ -225,7 +220,7 @@ async function addWord() {
   const { error: todayErr } = await sb.from('today_words').insert({ word_en: en, word_ar: ar });
   if (todayErr) {
     console.error('[addWord today]', todayErr);
-    showToast('⚠️ Error saving word. Check connection.');
+    showToast('Error');
     return;
   }
   state.today.push({ en, ar, date: new Date().toISOString() });
@@ -322,7 +317,7 @@ async function generateStory() {
 
   } catch (err) {
     console.error('[generateStory] Failed:', err);
-    showToast(`❌ ${err.message}`, 8000);
+    showToast('Error', 8000);
     showStoryError(err);
   } finally {
     state.generating = false;
@@ -369,7 +364,7 @@ async function translateStory() {
     renderStory();
   } catch (err) {
     console.error('[translateStory] Failed:', err);
-    showToast(`Translation failed: ${err.message}`, 8000);
+    showToast('Error', 8000);
   } finally {
     ui.translateBtn.disabled = false;
   }
@@ -486,7 +481,7 @@ function renderDictionary(filter = '') {
         ${w.ar ? `<div class="word-ar">${escHtml(w.ar)}</div>` : ''}
         ${showExamples && w.example ? `<div class="word-example">${escHtml(w.example)}</div>` : ''}
         ${showLoading ? `<div class="word-example word-example-loading">⏳ جاري توليد الجملة…</div>` : ''}
-        ${showFailed ? `<div class="word-example word-example-failed">⚠️ تعذّر توليد الجملة</div>` : ''}
+        ${showFailed ? `<div class="word-example word-example-failed">Error</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -566,7 +561,7 @@ async function backfillExamples() {
     for (const w of batch) {
       await fetchWordInfoFor(w.en);
       if (wordInfoFailures.has(w.en.toLowerCase()) && !shownErrorToast) {
-        showToast('تعذّر الاتصال بالخادم — تأكد من تشغيل vercel dev', 5000);
+        showToast('Error', 5000);
         shownErrorToast = true;
         break;
       }
@@ -584,7 +579,7 @@ async function generateSentences() {
   if (!en || state.sentenceGenerating) return;
 
   if (!/^[a-zA-Z\-']+$/.test(en)) {
-    showToast('Please enter an English word only.', 5000);
+    showToast('Error', 5000);
     ui.sentWordEn.focus();
     return;
   }
@@ -597,7 +592,7 @@ async function generateSentences() {
     const result = await apiPost('/api/sentences', { word: en.toLowerCase() });
 
     if (!result.valid) {
-      showToast(`"${en}" doesn't seem to be a valid English word.`, 7000);
+      showToast('Error', 7000);
       return;
     }
 
@@ -652,7 +647,7 @@ async function generateSentences() {
 
   } catch (err) {
     console.error('[generateSentences]', err);
-    showToast(`Error: ${err.message}`, 8000);
+    showToast('Error', 8000);
   } finally {
     state.sentenceGenerating = false;
     ui.sentGenerateBtn.disabled = false;
@@ -796,7 +791,7 @@ async function tfStart(total, queueOverride) {
       await Promise.all(missing.map(w => fetchWordInfoFor(w.en)));
       const eligibleAfter = state.dictionary.filter(w => w.definition);
       if (eligibleAfter.length < 4) {
-        showToast('تعذّر توليد تعريفات كافية. حاول لاحقاً.', 4000);
+        showToast('Error', 4000);
         return;
       }
       queue = tfBuildQueue(total, eligibleAfter);
