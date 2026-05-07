@@ -30,6 +30,11 @@ let state = {
   showingAr:  false,
   question:   '',
   generating: false,
+  // Sentence Mode
+  sentenceCards:      [],     // session-only: [{wordEn, wordAr, sentences, date}]
+  sentenceWords:      [],     // from Supabase sentences_words
+  sentenceGenerating: false,
+  dictTab: 'story',           // 'story' | 'sentences'
   quiz: {
     active: false,
     total: 10,
@@ -90,6 +95,15 @@ const ui = {
   tfWrongList:  $('tf-wrong-list'),
   tfRetry:      $('tf-retry'),
   tfPracticeMissed: $('tf-practice-missed'),
+  // Sentence Mode
+  sentWordEn:       $('sent-word-en'),
+  sentWordAr:       $('sent-word-ar'),
+  sentGenerateBtn:  $('sent-generate-btn'),
+  sentCards:        $('sent-cards'),
+  sentEmpty:        $('sent-empty'),
+  sentDictList:     $('sent-dict-list'),
+  sentDictEmpty:    $('sent-dict-empty'),
+  toggleExamplesRow: $('toggle-examples-row'),
 };
 
 // ─── Toast ───────────────────────────────────
@@ -147,13 +161,15 @@ async function updateStreak() {
 
 // ─── Words ───────────────────────────────────
 async function loadWords() {
-  const [dictRes, todayRes] = await Promise.all([
+  const [dictRes, todayRes, sentRes] = await Promise.all([
     sb.from('dictionary').select('*').order('added_at', { ascending: true }),
     sb.from('today_words').select('*').order('added_at', { ascending: true }),
+    sb.from('sentences_words').select('*').order('added_at', { ascending: false }),
   ]);
 
   if (dictRes.error)  console.error('[loadWords dict]',  dictRes.error);
   if (todayRes.error) console.error('[loadWords today]', todayRes.error);
+  if (sentRes.error)  console.error('[loadWords sent]',  sentRes.error);
 
   state.dictionary = (dictRes.data || []).map(r => ({
     en:         r.word_en,
@@ -167,6 +183,13 @@ async function loadWords() {
     avgMs:      r.quiz_avg_ms || 0,
   }));
   state.today = (todayRes.data || []).map(r => ({ en: r.word_en, ar: r.word_ar || '', date: r.added_at }));
+  state.sentenceWords = (sentRes.data || []).map(r => ({
+    id:        r.id,
+    wordEn:    r.word_en,
+    wordAr:    r.word_ar || '',
+    sentences: Array.isArray(r.sentences) ? r.sentences : [],
+    date:      r.added_at,
+  }));
 
   renderChips();
   renderDictionary();
@@ -396,24 +419,44 @@ function formatStoryHtml(story) {
 }
 
 // ─── Dictionary ──────────────────────────────
+const wordInfoFailures = new Set();
+
 async function fetchWordInfoFor(en) {
+  const key = en.toLowerCase();
   try {
     const { example, definition } = await apiPost('/api/word-info', { word: en });
     await sb.from('dictionary')
       .update({ example_en: example, definition_en: definition })
       .ilike('word_en', en);
-    const e = state.dictionary.find(w => w.en.toLowerCase() === en.toLowerCase());
+    const e = state.dictionary.find(w => w.en.toLowerCase() === key);
     if (e) { e.example = example; e.definition = definition; }
+    wordInfoFailures.delete(key);
     const dictPage = document.getElementById('page-dictionary');
     if (dictPage && dictPage.classList.contains('active')) {
       renderDictionary(ui.dictSearch.value.toLowerCase().trim());
     }
   } catch (err) {
+    wordInfoFailures.add(key);
     console.warn('[word-info]', en, err.message || err);
+    const dictPage = document.getElementById('page-dictionary');
+    if (dictPage && dictPage.classList.contains('active')) {
+      renderDictionary(ui.dictSearch.value.toLowerCase().trim());
+    }
   }
 }
 
 function renderDictionary(filter = '') {
+  if (state.dictTab === 'sentences') {
+    ui.dictList.innerHTML = '';
+    ui.dictEmpty.classList.add('hidden');
+    renderSentDictTab(filter);
+    return;
+  }
+
+  // Story Words tab
+  ui.sentDictList.classList.add('hidden');
+  ui.sentDictEmpty.classList.add('hidden');
+
   const list = filter
     ? state.dictionary.filter(w =>
         w.en.toLowerCase().includes(filter) ||
@@ -430,8 +473,11 @@ function renderDictionary(filter = '') {
   const showExamples = isExamplesEnabled();
 
   ui.dictEmpty.classList.add('hidden');
+  ui.dictList.classList.remove('hidden');
   ui.dictList.innerHTML = [...list].reverse().map(w => {
-    const showLoading = showExamples && !w.example;
+    const failed      = wordInfoFailures.has(w.en.toLowerCase());
+    const showLoading = showExamples && !w.example && !failed;
+    const showFailed  = showExamples && !w.example && failed;
     return `
     <div class="word-item">
       <div class="word-badge">${escHtml(w.en.slice(0, 2).toUpperCase())}</div>
@@ -440,9 +486,70 @@ function renderDictionary(filter = '') {
         ${w.ar ? `<div class="word-ar">${escHtml(w.ar)}</div>` : ''}
         ${showExamples && w.example ? `<div class="word-example">${escHtml(w.example)}</div>` : ''}
         ${showLoading ? `<div class="word-example word-example-loading">⏳ جاري توليد الجملة…</div>` : ''}
+        ${showFailed ? `<div class="word-example word-example-failed">⚠️ تعذّر توليد الجملة</div>` : ''}
       </div>
     </div>`;
   }).join('');
+}
+
+function renderSentDictTab(filter = '') {
+  ui.dictList.classList.add('hidden');
+  ui.dictEmpty.classList.add('hidden');
+
+  const list = filter
+    ? state.sentenceWords.filter(w =>
+        w.wordEn.toLowerCase().includes(filter) ||
+        (w.wordAr && w.wordAr.includes(filter))
+      )
+    : state.sentenceWords;
+
+  if (!list.length) {
+    ui.sentDictList.innerHTML = '';
+    ui.sentDictList.classList.add('hidden');
+    ui.sentDictEmpty.classList.remove('hidden');
+    return;
+  }
+
+  ui.sentDictEmpty.classList.add('hidden');
+  ui.sentDictList.classList.remove('hidden');
+  ui.sentDictList.innerHTML = list.map(w => {
+    const sentRows = (w.sentences || []).map(s => {
+      const safeSentence = escHtml(s.sentence || '')
+        .replace(/\*\*(.+?)\*\*/g, '<mark class="sent-mark">$1</mark>');
+      return `
+        <div class="sent-item">
+          <span class="sent-event-label">${escHtml(s.event || '')}</span>
+          <p class="sent-sentence">${safeSentence}</p>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="sent-dict-item">
+        <div class="sent-dict-header">
+          <div class="sent-dict-badge">${escHtml(w.wordEn.slice(0, 2).toUpperCase())}</div>
+          <div class="word-meta">
+            <div class="word-en">${escHtml(w.wordEn)}</div>
+            ${w.wordAr ? `<div class="word-ar">${escHtml(w.wordAr)}</div>` : ''}
+          </div>
+        </div>
+        <div class="sent-dict-sentences">${sentRows}</div>
+      </div>`;
+  }).join('');
+}
+
+function switchDictTab(tabName) {
+  if (state.dictTab === tabName) return;
+  state.dictTab = tabName;
+  document.querySelectorAll('.dict-tab').forEach(btn => {
+    const isActive = btn.dataset.tab === tabName;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', String(isActive));
+  });
+  // Hide/show toggle-examples row (only relevant for Story Words)
+  if (ui.toggleExamplesRow) {
+    ui.toggleExamplesRow.classList.toggle('hidden', tabName !== 'story');
+  }
+  renderDictionary(ui.dictSearch.value.toLowerCase().trim());
 }
 
 // Backfill missing example sentences in small throttled batches
@@ -453,10 +560,16 @@ async function backfillExamples() {
   const missing = state.dictionary.filter(w => !w.example);
   if (!missing.length) return;
   backfillRunning = true;
+  let shownErrorToast = false;
   try {
     const batch = missing.slice(0, 8);
     for (const w of batch) {
       await fetchWordInfoFor(w.en);
+      if (wordInfoFailures.has(w.en.toLowerCase()) && !shownErrorToast) {
+        showToast('تعذّر الاتصال بالخادم — تأكد من تشغيل vercel dev', 5000);
+        shownErrorToast = true;
+        break;
+      }
       await new Promise(r => setTimeout(r, 250));
     }
   } finally {
@@ -464,10 +577,127 @@ async function backfillExamples() {
   }
 }
 
+// ─── Sentence Mode ───────────────────────────
+async function generateSentences() {
+  const en = ui.sentWordEn.value.trim();
+  const ar = ui.sentWordAr.value.trim();
+  if (!en || state.sentenceGenerating) return;
+
+  if (!/^[a-zA-Z\-']+$/.test(en)) {
+    showToast('Please enter an English word only.', 5000);
+    ui.sentWordEn.focus();
+    return;
+  }
+
+  state.sentenceGenerating = true;
+  ui.sentGenerateBtn.disabled = true;
+  ui.sentGenerateBtn.innerHTML = '<span class="spinner"></span> Generating…';
+
+  try {
+    const result = await apiPost('/api/sentences', { word: en.toLowerCase() });
+
+    if (!result.valid) {
+      showToast(`"${en}" doesn't seem to be a valid English word.`, 7000);
+      return;
+    }
+
+    const card = {
+      wordEn:    en,
+      wordAr:    ar,
+      sentences: result.sentences,
+      date:      new Date().toISOString(),
+    };
+
+    // Newest card on top
+    state.sentenceCards.unshift(card);
+    renderSentenceCards();
+
+    // Persist only if not already in dictionary (prevent duplicates)
+    const existing = state.sentenceWords.find(
+      w => w.wordEn.toLowerCase() === en.toLowerCase()
+    );
+
+    if (!existing) {
+      sb.from('sentences_words')
+        .insert({
+          word_en:   en,
+          word_ar:   ar || null,
+          sentences: result.sentences,
+        })
+        .select()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('[generateSentences persist]', error);
+            return;
+          }
+          if (data && data[0]) {
+            state.sentenceWords.unshift({
+              id:        data[0].id,
+              wordEn:    en,
+              wordAr:    ar,
+              sentences: result.sentences,
+              date:      data[0].added_at,
+            });
+            const dictPage = document.getElementById('page-dictionary');
+            if (dictPage && dictPage.classList.contains('active') && state.dictTab === 'sentences') {
+              renderSentDictTab(ui.dictSearch.value.toLowerCase().trim());
+            }
+          }
+        });
+    }
+
+    ui.sentWordEn.value = '';
+    ui.sentWordAr.value = '';
+    ui.sentWordEn.focus();
+
+  } catch (err) {
+    console.error('[generateSentences]', err);
+    showToast(`Error: ${err.message}`, 8000);
+  } finally {
+    state.sentenceGenerating = false;
+    ui.sentGenerateBtn.disabled = false;
+    ui.sentGenerateBtn.innerHTML = '✏️ Generate Sentences';
+  }
+}
+
+function renderSentenceCards() {
+  if (!state.sentenceCards.length) {
+    ui.sentCards.innerHTML = '';
+    ui.sentEmpty.classList.remove('hidden');
+    return;
+  }
+
+  ui.sentEmpty.classList.add('hidden');
+  ui.sentCards.innerHTML = state.sentenceCards.map(card => {
+    const sentItems = (card.sentences || []).map(s => {
+      const safeSentence = escHtml(s.sentence || '')
+        .replace(/\*\*(.+?)\*\*/g, '<mark class="sent-mark">$1</mark>');
+      return `
+        <div class="sent-item">
+          <span class="sent-event-label">${escHtml(s.event || '')}</span>
+          <p class="sent-sentence">${safeSentence}</p>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="sent-card">
+        <div class="sent-card-header">
+          <span class="sent-card-word">${escHtml(card.wordEn)}</span>
+          ${card.wordAr ? `<span class="sent-card-ar">${escHtml(card.wordAr)}</span>` : ''}
+        </div>
+        <div class="sent-card-divider"></div>
+        <div class="sent-items">${sentItems}</div>
+      </div>`;
+  }).join('');
+}
+
 // ─── Welcome guide ───────────────────────────
 function updateWelcomeVisibility() {
   if (!ui.welcomeCard) return;
-  const hasActivity = state.dictionary.length > 0 || state.today.length > 0;
+  const hasActivity =
+    state.dictionary.length > 0 ||
+    state.today.length > 0 ||
+    state.sentenceWords.length > 0;
   if (!isWelcomeDismissed() && !hasActivity) {
     ui.welcomeCard.classList.remove('hidden');
   } else {
@@ -493,6 +723,7 @@ function switchPage(name) {
   if (name === 'dictionary') { renderDictionary(ui.dictSearch.value.toLowerCase()); backfillExamples(); }
   if (name === 'archive')    renderArchive();
   if (name === 'thinkfast')  tfReset();
+  if (name === 'sentences')  renderSentenceCards();
 }
 
 // ─── Think Fast (timed MCQ quiz) ─────────────
@@ -545,7 +776,7 @@ function tfPickDistractors(correctEntry) {
   return unique;
 }
 
-function tfStart(total, queueOverride) {
+async function tfStart(total, queueOverride) {
   if (state.dictionary.length < 4) {
     if (ui.tfEmpty)  ui.tfEmpty.classList.remove('hidden');
     if (ui.tfStart)  ui.tfStart.classList.add('hidden');
@@ -560,15 +791,18 @@ function tfStart(total, queueOverride) {
   } else {
     const eligible = state.dictionary.filter(w => w.definition);
     if (eligible.length < 4) {
-      showToast('Generating definitions, try again in a moment…', 4000);
-      // background-fill missing
-      state.dictionary
-        .filter(w => !w.definition)
-        .slice(0, 8)
-        .forEach(w => fetchWordInfoFor(w.en));
-      return;
+      showToast('جارٍ توليد التعريفات…', 2500);
+      const missing = state.dictionary.filter(w => !w.definition).slice(0, 8);
+      await Promise.all(missing.map(w => fetchWordInfoFor(w.en)));
+      const eligibleAfter = state.dictionary.filter(w => w.definition);
+      if (eligibleAfter.length < 4) {
+        showToast('تعذّر توليد تعريفات كافية. حاول لاحقاً.', 4000);
+        return;
+      }
+      queue = tfBuildQueue(total, eligibleAfter);
+    } else {
+      queue = tfBuildQueue(total, eligible);
     }
-    queue = tfBuildQueue(total, eligible);
   }
 
   state.quiz.active = true;
@@ -872,6 +1106,30 @@ function bindEvents() {
       tfStart(queue.length, queue);
     });
   }
+
+  // ─── Sentence Mode ───────────────────────────
+  if (ui.sentGenerateBtn) {
+    ui.sentGenerateBtn.addEventListener('click', generateSentences);
+  }
+  if (ui.sentWordEn) {
+    ui.sentWordEn.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); ui.sentWordAr.focus(); }
+    });
+  }
+  if (ui.sentWordAr) {
+    ui.sentWordAr.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); generateSentences(); }
+    });
+  }
+
+  // Dictionary tabs (event delegation)
+  const dictTabsEl = document.querySelector('.dict-tabs');
+  if (dictTabsEl) {
+    dictTabsEl.addEventListener('click', e => {
+      const btn = e.target.closest('.dict-tab');
+      if (btn && btn.dataset.tab) switchDictTab(btn.dataset.tab);
+    });
+  }
 }
 
 // ─── Init ────────────────────────────────────
@@ -879,6 +1137,7 @@ async function init() {
   bindEvents();
   await Promise.all([loadWords(), loadStreak()]);
   updateWelcomeVisibility();
+  renderSentenceCards();
   if (ui.toggleExamples) ui.toggleExamples.checked = isExamplesEnabled();
   // Backfill missing example sentences for legacy words (throttled)
   backfillExamples();

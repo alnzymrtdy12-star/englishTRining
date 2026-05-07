@@ -915,6 +915,12 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.7; }
   font-style: normal;
   font-size: 12px;
 }
+.word-example-failed {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--red-dark);
+  opacity: 0.9;
+}
 .toggle-row {
   display: flex;
   align-items: center;
@@ -1172,4 +1178,158 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.7; }
 @media (min-width: 1024px) {
   .tf-options { grid-template-columns: repeat(4, 1fr); }
   .tf-clue { font-size: 30px; }
+}
+
+/* ===== DICTIONARY TABS ===== */
+.dict-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.dict-tab {
+  flex: 1;
+  padding: 10px 8px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+.dict-tab:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+.dict-tab.active {
+  background: var(--surface);
+  border-color: var(--green);
+  color: var(--green-shadow);
+  box-shadow: 0 2px 0 var(--green-shadow);
+}
+
+/* ===== SENTENCE MODE — session cards ===== */
+#sent-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sent-card {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  animation: slideUp .25s ease;
+}
+.sent-card-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.sent-card-word {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.sent-card-ar {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  direction: rtl;
+}
+.sent-card-divider {
+  height: 2px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 14px;
+}
+.sent-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sent-item {
+  padding-left: 4px;
+}
+.sent-event-label {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-bottom: 6px;
+}
+.sent-sentence {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--text);
+  margin: 0;
+}
+mark.sent-mark {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 800;
+}
+
+/* ===== SENTENCE WORDS (Dictionary tab) ===== */
+.sent-dict-item {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  animation: slideUp .25s ease;
+}
+.sent-dict-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.sent-dict-badge {
+  width: 44px;
+  height: 44px;
+  background: #dbeafe;
+  border: 2px solid #93c5fd;
+  color: #1d4ed8;
+  font-size: 14px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+}
+.sent-dict-sentences {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 4px;
+}
+
+/* Tablet+ tweaks for sentence cards */
+@media (min-width: 700px) {
+  .sent-card { padding: 22px; }
+  .sent-card-word { font-size: 24px; }
+  .sent-sentence { font-size: 15px; }
+  .dict-tab { font-size: 14px; padding: 12px; }
+}
+
+/* Mobile bottom-nav with 5 items: tighten labels slightly */
+@media (max-width: 480px) {
+  #bottom-nav .nav-label { font-size: 10px; letter-spacing: 0.02em; }
+  #bottom-nav .nav-icon { font-size: 22px; }
 }

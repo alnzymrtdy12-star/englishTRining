@@ -1,6 +1,8 @@
 {
   "rewrites": [
     { "source": "/api/generate", "destination": "/api/generate.js" },
-    { "source": "/api/translate", "destination": "/api/translate.js" }
+    { "source": "/api/translate", "destination": "/api/translate.js" },
+    { "source": "/api/word-info", "destination": "/api/word-info.js" },
+    { "source": "/api/sentences", "destination": "/api/sentences.js" }
   ]
 }

@@ -37,6 +37,10 @@
           <span class="nav-icon">⚡</span>
           <span class="nav-label">Think Fast</span>
         </button>
+        <button class="nav-item" data-page="sentences">
+          <span class="nav-icon">✏️</span>
+          <span class="nav-label">Sentences</span>
+        </button>
       </nav>
     </aside>
 
@@ -147,7 +151,11 @@
           <div class="page-header">
             <h2>My Dictionary</h2>
           </div>
-          <label class="toggle-row" dir="rtl">
+          <div class="dict-tabs" role="tablist">
+            <button class="dict-tab active" data-tab="story" role="tab" aria-selected="true">📖 Story Words</button>
+            <button class="dict-tab" data-tab="sentences" role="tab" aria-selected="false">✏️ Sentence Words</button>
+          </div>
+          <label class="toggle-row" dir="rtl" id="toggle-examples-row">
             <input type="checkbox" id="toggle-examples" checked />
             <span>إظهار الجمل الداعمة</span>
           </label>
@@ -164,6 +172,11 @@
           <div id="dict-empty" class="empty-state hidden">
             <div class="empty-icon">📚</div>
             <p dir="rtl">لم تتم إضافة أي كلمة بعد</p>
+          </div>
+          <div id="sent-dict-list" class="words-list hidden"></div>
+          <div id="sent-dict-empty" class="empty-state hidden">
+            <div class="empty-icon">✏️</div>
+            <p dir="rtl">لا توجد كلمات بعد. أضف واحدة من صفحة Sentences!</p>
           </div>
         </div>
       </div>
@@ -242,6 +255,45 @@
         </div>
       </div>
 
+      <!-- ===== PAGE: SENTENCES ===== -->
+      <div id="page-sentences" class="page">
+        <div class="page-scroll">
+          <div class="page-header">
+            <h2>Sentence Builder ✏️</h2>
+            <p class="page-subtitle">One word · 3 real-life sentences · deepen your memory</p>
+          </div>
+
+          <div class="section-card">
+            <h3 class="section-title">Add a Word</h3>
+            <div class="input-row">
+              <input
+                type="text"
+                id="sent-word-en"
+                placeholder="English word"
+                autocomplete="off"
+              />
+              <input
+                type="text"
+                id="sent-word-ar"
+                placeholder="معنى (اختياري)"
+                autocomplete="off"
+                dir="auto"
+              />
+            </div>
+            <button id="sent-generate-btn" class="btn-generate">
+              ✏️ Generate Sentences
+            </button>
+          </div>
+
+          <div id="sent-empty" class="empty-state">
+            <div class="empty-icon">✏️</div>
+            <p dir="rtl">أضف كلمة فوق لتوليد ٣ جمل في سياقات مختلفة</p>
+          </div>
+
+          <div id="sent-cards"></div>
+        </div>
+      </div>
+
     </main>
 
   </div><!-- end #app -->
@@ -263,6 +315,10 @@
     <button class="nav-item" data-page="thinkfast">
       <span class="nav-icon">⚡</span>
       <span class="nav-label">Think Fast</span>
+    </button>
+    <button class="nav-item" data-page="sentences">
+      <span class="nav-icon">✏️</span>
+      <span class="nav-label">Sentences</span>
     </button>
   </nav>
 
